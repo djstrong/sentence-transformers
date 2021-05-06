@@ -7,7 +7,7 @@ from scipy.stats import pearsonr, spearmanr
 import numpy as np
 from typing import List
 from ..readers import InputExample
-
+from ..wandb_logger import WandbLogger
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ class EmbeddingSimilarityEvaluator(SentenceEvaluator):
         return cls(sentences1, sentences2, scores, **kwargs)
 
 
-    def __call__(self, model, output_path: str = None, epoch: int = -1, steps: int = -1) -> float:
+    def __call__(self, model, output_path: str = None, epoch: int = -1, steps: int = -1, wandb_logger:WandbLogger=None) -> float:
         if epoch != -1:
             if steps == -1:
                 out_txt = " after epoch {}:".format(epoch)
@@ -116,6 +116,16 @@ class EmbeddingSimilarityEvaluator(SentenceEvaluator):
                 writer.writerow([epoch, steps, eval_pearson_cosine, eval_spearman_cosine, eval_pearson_euclidean,
                                  eval_spearman_euclidean, eval_pearson_manhattan, eval_spearman_manhattan, eval_pearson_dot, eval_spearman_dot])
 
+        if wandb_logger and wandb_logger.wandb_run:
+            prefix=f'{self.name}/'
+            wandb_logger.log({"Cosine-Similarity_Pearson": eval_pearson_cosine}, prefix)
+            wandb_logger.log({"Cosine-Similarity_Spearman": eval_pearson_cosine}, prefix)
+            wandb_logger.log({"Manhattan-Distance_Pearson": eval_pearson_manhattan}, prefix)
+            wandb_logger.log({"Manhattan-Distance_Spearman": eval_spearman_manhattan}, prefix)
+            wandb_logger.log({"Euclidean-Distance_Pearson": eval_pearson_euclidean}, prefix)
+            wandb_logger.log({"Euclidean-Distance_Spearman": eval_spearman_euclidean}, prefix)
+            wandb_logger.log({"Dot-Product-Distance_Pearson": eval_pearson_dot}, prefix)
+            wandb_logger.log({"Dot-Product-Distance_Spearman": eval_spearman_dot}, prefix)
 
         if self.main_similarity == SimilarityFunction.COSINE:
             return eval_spearman_cosine

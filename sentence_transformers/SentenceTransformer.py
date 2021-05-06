@@ -18,6 +18,7 @@ from tqdm.autonotebook import trange
 import math
 import queue
 
+from .wandb_logger import WandbLogger
 from . import __DOWNLOAD_SERVER__
 from .evaluation import SentenceEvaluator
 from .util import import_from_string, batch_to_device, http_get
@@ -135,6 +136,9 @@ class SentenceTransformer(nn.Sequential):
         #We created a new model from scratch based on a Transformer model. Save the SBERT model in the cache folder
         if save_model_to is not None:
             self.save(save_model_to)
+
+        self.model_name_or_path = model_name_or_path
+        self.wandb_logger = WandbLogger(project='project_name', name='run_name' if len('run_name') > 0 else None)
 
 
     def encode(self, sentences: Union[str, List[str], List[int]],
@@ -531,6 +535,22 @@ class SentenceTransformer(nn.Sequential):
 
         num_train_objectives = len(train_objectives)
 
+        if self.wandb_logger.wandb_run:
+            self.wandb_logger.log_config({
+                'model_name_or_path':self.model_name_or_path,
+                'steps_per_epoch':steps_per_epoch,
+                'num_train_steps':num_train_steps,
+                'epochs':epochs,
+                'scheduler':scheduler,
+                'warmup_steps':warmup_steps,
+                'optimizer_params':optimizer_params,
+                'weight_decay':weight_decay,
+                'evaluation_steps':evaluation_steps,
+                'output_path':output_path,
+                'max_grad_norm':max_grad_norm,
+                'num_train_objectives':num_train_objectives,
+            })
+            
         skip_scheduler = False
         for epoch in trange(epochs, desc="Epoch", disable=not show_progress_bar):
             training_steps = 0
@@ -580,6 +600,10 @@ class SentenceTransformer(nn.Sequential):
                     if not skip_scheduler:
                         scheduler.step()
 
+                    if self.wandb_logger.wandb_run:
+                        loss_model_name=type(loss_model).__name__
+                        self.wandb_logger.log({"loss": loss_value, "learning_rate": scheduler.get_last_lr()[0]}, f'train/{loss_model_name}.')
+
                 training_steps += 1
                 global_step += 1
 
@@ -593,16 +617,21 @@ class SentenceTransformer(nn.Sequential):
                 if checkpoint_path is not None and checkpoint_save_steps is not None and checkpoint_save_steps > 0 and global_step % checkpoint_save_steps == 0:
                     self._save_checkpoint(checkpoint_path, checkpoint_save_total_limit, global_step)
 
+                if self.wandb_logger.wandb_run:
+                    self.wandb_logger.log({"training_steps": training_steps, "global_step": global_step, 'epoch':epoch},
+                                          'train/')
+                    self.wandb_logger.flush()
 
             self._eval_during_training(evaluator, output_path, save_best_model, epoch, -1, callback)
+            if self.wandb_logger.wandb_run:
+                self.wandb_logger.log({"best_score": self.best_score},'dev/')
+                self.wandb_logger.flush()
 
         if evaluator is None and output_path is not None:   #No evaluator, but output path: save final model version
             self.save(output_path)
 
         if checkpoint_path is not None:
             self._save_checkpoint(checkpoint_path, checkpoint_save_total_limit, global_step)
-
-
 
     def evaluate(self, evaluator: SentenceEvaluator, output_path: str = None):
         """
@@ -615,12 +644,16 @@ class SentenceTransformer(nn.Sequential):
         """
         if output_path is not None:
             os.makedirs(output_path, exist_ok=True)
-        return evaluator(self, output_path)
+        return evaluator(self, output_path, wandb_logger=self.wandb_logger)
 
     def _eval_during_training(self, evaluator, output_path, save_best_model, epoch, steps, callback):
         """Runs evaluation during the training"""
         if evaluator is not None:
-            score = evaluator(self, output_path=output_path, epoch=epoch, steps=steps)
+            score = evaluator(self, output_path=output_path, epoch=epoch, steps=steps, wandb_logger=self.wandb_logger)
+
+            if self.wandb_logger.wandb_run:
+                self.wandb_logger.log({"score": score}, 'dev/')
+
             if callback is not None:
                 callback(score, epoch, steps)
             if score > self.best_score:

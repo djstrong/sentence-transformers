@@ -3,6 +3,7 @@ import torch
 from torch.utils.data import DataLoader
 import logging
 from ..util import batch_to_device
+from ..wandb_logger import WandbLogger
 import os
 import csv
 
@@ -36,7 +37,7 @@ class LabelAccuracyEvaluator(SentenceEvaluator):
         self.csv_file = "accuracy_evaluation"+name+"_results.csv"
         self.csv_headers = ["epoch", "steps", "accuracy"]
 
-    def __call__(self, model, output_path: str = None, epoch: int = -1, steps: int = -1) -> float:
+    def __call__(self, model, output_path: str = None, epoch: int = -1, steps: int = -1, wandb_logger:WandbLogger=None) -> float:
         model.eval()
         total = 0
         correct = 0
@@ -76,5 +77,10 @@ class LabelAccuracyEvaluator(SentenceEvaluator):
                 with open(csv_path, mode="a", encoding="utf-8") as f:
                     writer = csv.writer(f)
                     writer.writerow([epoch, steps, accuracy])
+
+        if wandb_logger and wandb_logger.wandb_run:
+            prefix=f'dev/{self.name}.'
+            wandb_logger.log({"Accuracy": accuracy}, prefix)
+
 
         return accuracy
