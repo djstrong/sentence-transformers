@@ -119,7 +119,7 @@ class EmbeddingSimilarityEvaluator(SentenceEvaluator):
         if wandb_logger and wandb_logger.wandb_run:
             prefix=f'{self.name}/'
             wandb_logger.log({"Cosine-Similarity_Pearson": eval_pearson_cosine}, prefix)
-            wandb_logger.log({"Cosine-Similarity_Spearman": eval_pearson_cosine}, prefix)
+            wandb_logger.log({"Cosine-Similarity_Spearman": eval_spearman_cosine}, prefix)
             wandb_logger.log({"Manhattan-Distance_Pearson": eval_pearson_manhattan}, prefix)
             wandb_logger.log({"Manhattan-Distance_Spearman": eval_spearman_manhattan}, prefix)
             wandb_logger.log({"Euclidean-Distance_Pearson": eval_pearson_euclidean}, prefix)
